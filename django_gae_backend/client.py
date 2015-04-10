@@ -26,10 +26,10 @@ for use with the "dbshell" management command.
 
 
 
-from django.db import backends
+from django.db.backends.base import client
 
 
-class DatabaseClient(backends.BaseDatabaseClient):
+class DatabaseClient(client.BaseDatabaseClient):
   """Database client for rdbms."""
 
   def runshell(self):

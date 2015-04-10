@@ -61,8 +61,8 @@ import sys
 import time
 
 from django.core import exceptions
-from django.db import backends
 from django.db.backends import signals
+from django.db.backends.base import operations
 from django.utils import safestring
 
 from google.appengine.api import apiproxy_stub_map
@@ -223,7 +223,7 @@ class DatabaseOperations(base.DatabaseOperations):
 
 
 
-    return backends.BaseDatabaseOperations.last_executed_query(
+    return operations.BaseDatabaseOperations.last_executed_query(
         self, cursor, sql, params)
 
 
@@ -245,38 +245,38 @@ class DatabaseWrapper(base.DatabaseWrapper):
 
       self.ops = DatabaseOperations(self)
 
-  def _valid_connection(self):
+  def is_usable(self):
     """Disable ping on every operation."""
     if self.connection is not None:
       if time.time() - self._last_ping_time < PING_INTERVAL_SECS:
-
-
-
         return True
       else:
         self._last_ping_time = time.time()
-
-        return super(DatabaseWrapper, self)._valid_connection()
+        return super(DatabaseWrapper, self).is_usable()
     else:
       return False
 
-  def _cursor(self):
-    if not self._valid_connection():
-      kwargs = {'conv': base.django_conversions, 'dsn': None}
-      settings_dict = self.settings_dict
-      settings_dict.update(settings_dict.get('OPTIONS', {}))
-      for settings_key, kwarg, required in _SETTINGS_CONNECT_ARGS:
-        value = settings_dict.get(settings_key)
-        if value:
-          kwargs[kwarg] = value
-        elif required:
-          raise exceptions.ImproperlyConfigured(
-              "You must specify a '%s' for database '%s'" %
-              (settings_key, self.alias))
-      self.connection = Connect(**kwargs)
-      encoders = {safestring.SafeUnicode: self.connection.encoders[unicode],
-                  safestring.SafeString: self.connection.encoders[str]}
-      self.connection.encoders.update(encoders)
-      signals.connection_created.send(sender=self.__class__, connection=self)
+  def get_connection_params(self):
+    kwargs = {'conv': base.django_conversions, 'dsn': None}
+    settings_dict = self.settings_dict
+    settings_dict.update(settings_dict.get('OPTIONS', {}))
+    for settings_key, kwarg, required in _SETTINGS_CONNECT_ARGS:
+      value = settings_dict.get(settings_key)
+      if value:
+        kwargs[kwarg] = value
+      elif required:
+        raise exceptions.ImproperlyConfigured(
+            "You must specify a '%s' for database '%s'" %
+            (settings_key, self.alias))
+    return kwargs
+
+  def get_new_connection(self, conn_params):
+    conn = Connect(**conn_params)
+    encoders = {safestring.SafeUnicode: conn.encoders[unicode],
+                safestring.SafeString: conn.encoders[str]}
+    conn.encoders.update(encoders)
+    return conn
+
+  def create_cursor(self):
     cursor = base.CursorWrapper(self.connection.cursor())
     return cursor
